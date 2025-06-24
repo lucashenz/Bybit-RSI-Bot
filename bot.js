@@ -7,7 +7,7 @@ const API_KEY = process.env.API_KEY;
 const API_SECRET = process.env.API_SECRET;
 
 const symbol = 'BTCUSDT';
-const interval = '15';
+const interval = 'D1';
 const limit = 100;
 
 async function fetchCandles() {
@@ -20,17 +20,16 @@ async function sendOrder({ side = "Buy", qty = "0.00001", symbol = "BTCUSDT" }) 
   const timestamp = Date.now().toString();
   const url = "https://api.bybit.com/v5/order/create";
 
-  const params = {
-    apiKey: API_KEY,
-    category: "linear",        
-    symbol,                   
-    side,                      
-    orderType: "Market",      
-    qty,                      
-    timestamp,
-    recvWindow: "5000",
+  const headers = {
+    "X-BYBIT-API-KEY": API_KEY,
+    "X-BYBIT-SIGN": signature,
+    "X-BYBIT-TIMESTAMP": timestamp,
+    "X-BYBIT-RECV-WINDOW": "5000",
+    "Content-Type": "application/json"
   };
-
+  
+  await axios.post(url, params, { headers });
+  
   const orderedParams = Object.keys(params)
     .sort()
     .map(key => `${key}=${params[key]}`)
