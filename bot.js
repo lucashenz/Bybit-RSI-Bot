@@ -1,9 +1,13 @@
 require('dotenv').config();
 const axios = require('axios');
+const crypto = require('crypto');
 const { RSI } = require('technicalindicators');
 
+const API_KEY = process.env.API_KEY;
+const API_SECRET = process.env.API_SECRET;
+
 const symbol = 'BTCUSDT';
-const interval = '15'; // 15 minutos
+const interval = '15';
 const limit = 100;
 
 async function fetchCandles() {
@@ -12,6 +16,46 @@ async function fetchCandles() {
   return response.data.result.list.map(candle => parseFloat(candle[4])); 
 }
 
+async function sendOrder({ side = "Buy", qty = "0.00001", symbol = "BTCUSDT" }) {
+  const timestamp = Date.now().toString();
+  const url = "https://api.bybit.com/v5/order/create";
+
+  const params = {
+    apiKey: API_KEY,
+    category: "linear",        
+    symbol,                   
+    side,                      
+    orderType: "Market",      
+    qty,                      
+    timestamp,
+    recvWindow: "5000",
+  };
+
+  const orderedParams = Object.keys(params)
+    .sort()
+    .map(key => `${key}=${params[key]}`)
+    .join('&');
+
+  const signature = crypto
+    .createHmac('sha256', API_SECRET)
+    .update(orderedParams)
+    .digest('hex');
+
+  try {
+    const response = await axios.post(url, params, {
+      headers: {
+        "X-BYBIT-SIGN": signature,
+        "Content-Type": "application/json"
+      }
+    });
+
+    console.log("📦 Ordem enviada com sucesso:", response.data);
+  } catch (err) {
+    console.error("❌ Erro ao enviar ordem:", err.response?.data || err.message);
+  }
+}
+
+// 3. FUNÇÃO PRINCIPAL
 async function main() {
   const closes = await fetchCandles();
   const rsi = RSI.calculate({ values: closes, period: 14 });
@@ -19,15 +63,16 @@ async function main() {
 
   console.log(`RSI atual: ${lastRsi}`);
 
-  if (lastRsi < 30) {
+  if (lastRsi < 20) {
     console.log('🔵 Sinal de COMPRA');
-    // Aqui você chamaria a API da Bybit para comprar
+    await sendOrder({ side: "Buy", qty: "0.00001", symbol });
   } else if (lastRsi > 70) {
     console.log('🔴 Sinal de VENDA');
-    // Aqui você chamaria a API da Bybit para vender
+    await sendOrder({ side: "Sell", qty: "0.00001", symbol });
   } else {
     console.log('⚪ Sem sinal claro');
   }
 }
 
 main();
+
