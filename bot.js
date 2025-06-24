@@ -30,9 +30,9 @@ const placeSpotOrder = async (symbol, side, qty) => {
 
   try {
     const res = await axios.post(endpoint, null, { params });
-    console.log(`✅ Ordem ${side} enviada:`, res.data);
+    console.log(` Ordem ${side} enviada:`, res.data);
   } catch (err) {
-    console.error('❌ Erro ao enviar ordem Spot:', err.response ? err.response.data : err.message);
+    console.error(' Erro ao enviar ordem Spot:', err.response ? err.response.data : err.message);
   }
 };
 
@@ -61,24 +61,24 @@ const runBot = async () => {
   const closes = await fetchCandles(symbol);
 
   if (closes.length < 14) {
-    console.log('❌ Dados insuficientes para calcular RSI.');
+    console.log(' Dados insuficientes para calcular RSI.');
     return;
   }
 
   const rsi = RSI.calculate({ values: closes, period: 14 });
   const latestRSI = rsi[rsi.length - 1];
-  console.log(`📈 RSI atual: ${latestRSI.toFixed(2)}`);
+  console.log(` RSI atual: ${latestRSI.toFixed(2)}`);
 
   if (latestRSI < 30 && !inPosition) {
-    console.log('📉 RSI abaixo de 30. Enviando ordem de COMPRA...');
+    console.log(' RSI abaixo de 30. Enviando ordem de COMPRA...');
     await placeSpotOrder(symbol, 'BUY', qty);
     inPosition = true;
   } else if (latestRSI > 70 && inPosition) {
-    console.log('📈 RSI acima de 70. Enviando ordem de VENDA...');
+    console.log(' RSI acima de 70. Enviando ordem de VENDA...');
     await placeSpotOrder(symbol, 'SELL', qty);
     inPosition = false;
   } else {
-    console.log('🔁 Nenhuma ação necessária.');
+    console.log(' Nenhuma ação necessária.');
   }
 };
 
