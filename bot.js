@@ -3,75 +3,85 @@ const axios = require('axios');
 const crypto = require('crypto');
 const { RSI } = require('technicalindicators');
 
-const API_KEY = process.env.API_KEY;
-const API_SECRET = process.env.API_SECRET;
+const apiKey = process.env.BYBIT_API_KEY;
+const apiSecret = process.env.BYBIT_API_SECRET;
 
-const symbol = 'BTCUSDT';
-const interval = 'D1';
-const limit = 100;
+let inPosition = false;
 
-async function fetchCandles() {
-  const url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${interval}&limit=${limit}`;
-  const response = await axios.get(url);
-  return response.data.result.list.map(candle => parseFloat(candle[4])); 
-}
+const getSignature = (params, secret) => {
+  const orderedParams = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&');
+  return crypto.createHmac('sha256', secret).update(orderedParams).digest('hex');
+};
 
-async function sendOrder({ side = "Buy", qty = "0.00001", symbol = "BTCUSDT" }) {
-  const timestamp = Date.now().toString();
-  const url = "https://api.bybit.com/v5/order/create";
+const placeSpotOrder = async (symbol, side, qty) => {
+  const endpoint = 'https://api.bybit.com/spot/v1/order';
+  const timestamp = Date.now();
 
-  const headers = {
-    "X-BYBIT-API-KEY": API_KEY,
-    "X-BYBIT-SIGN": signature,
-    "X-BYBIT-TIMESTAMP": timestamp,
-    "X-BYBIT-RECV-WINDOW": "5000",
-    "Content-Type": "application/json"
+  const params = {
+    api_key: apiKey,
+    symbol,
+    side,          
+    type: 'MARKET',
+    qty,
+    timestamp,
   };
-  
-  await axios.post(url, params, { headers });
-  
-  const orderedParams = Object.keys(params)
-    .sort()
-    .map(key => `${key}=${params[key]}`)
-    .join('&');
 
-  const signature = crypto
-    .createHmac('sha256', API_SECRET)
-    .update(orderedParams)
-    .digest('hex');
+  params.sign = getSignature(params, apiSecret);
 
   try {
-    const response = await axios.post(url, params, {
-      headers: {
-        "X-BYBIT-SIGN": signature,
-        "Content-Type": "application/json"
-      }
+    const res = await axios.post(endpoint, null, { params });
+    console.log(`✅ Ordem ${side} enviada:`, res.data);
+  } catch (err) {
+    console.error('❌ Erro ao enviar ordem Spot:', err.response ? err.response.data : err.message);
+  }
+};
+
+const fetchCandles = async (symbol = 'BTCUSDT') => {
+  try {
+    const res = await axios.get('https://api.bybit.com/v5/market/kline', {
+      params: {
+        category: 'spot',
+        symbol,
+        interval: '5',
+        limit: 100,
+      },
     });
 
-    console.log("📦 Ordem enviada com sucesso:", response.data);
+    const closePrices = res.data.result.list.map(candle => parseFloat(candle[4])).reverse();
+    return closePrices;
   } catch (err) {
-    console.error("❌ Erro ao enviar ordem:", err.response?.data || err.message);
+    console.error('Erro ao buscar candles:', err.message);
+    return [];
   }
-}
+};
 
-// 3. FUNÇÃO PRINCIPAL
-async function main() {
-  const closes = await fetchCandles();
+const runBot = async () => {
+  const symbol = 'BTCUSDT';
+  const qty = '0.00001'; // Ajuste conforme sua conta
+  const closes = await fetchCandles(symbol);
+
+  if (closes.length < 14) {
+    console.log('❌ Dados insuficientes para calcular RSI.');
+    return;
+  }
+
   const rsi = RSI.calculate({ values: closes, period: 14 });
-  const lastRsi = rsi[rsi.length - 1];
+  const latestRSI = rsi[rsi.length - 1];
+  console.log(`📈 RSI atual: ${latestRSI.toFixed(2)}`);
 
-  console.log(`RSI atual: ${lastRsi}`);
-
-  if (lastRsi < 20) {
-    console.log('🔵 Sinal de COMPRA');
-    await sendOrder({ side: "Buy", qty: "0.00001", symbol });
-  } else if (lastRsi > 70) {
-    console.log('🔴 Sinal de VENDA');
-    await sendOrder({ side: "Sell", qty: "0.00001", symbol });
+  if (latestRSI < 30 && !inPosition) {
+    console.log('📉 RSI abaixo de 30. Enviando ordem de COMPRA...');
+    await placeSpotOrder(symbol, 'BUY', qty);
+    inPosition = true;
+  } else if (latestRSI > 70 && inPosition) {
+    console.log('📈 RSI acima de 70. Enviando ordem de VENDA...');
+    await placeSpotOrder(symbol, 'SELL', qty);
+    inPosition = false;
   } else {
-    console.log('⚪ Sem sinal claro');
+    console.log('🔁 Nenhuma ação necessária.');
   }
-}
+};
 
-main();
 
+setInterval(runBot, 5 * 60 * 1000);
+runBot(); 
